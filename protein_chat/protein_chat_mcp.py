@@ -215,8 +215,8 @@ CUSTOM_CSS = """
         display: inline-block;
     }
 
-    /* ── Right panel / Viewer ── */
-    .viewer-card {
+    /* ── Right panel (style the column itself) ── */
+    [data-testid="stColumns"] > div:last-child > [data-testid="stVerticalBlockBorderWrapper"] > div {
         background: rgba(12, 18, 35, 0.55);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
@@ -391,6 +391,20 @@ CUSTOM_CSS = """
         background: rgba(0, 212, 170, 0.12);
         border-color: rgba(0, 212, 170, 0.25);
         color: #00d4aa;
+    }
+
+    /* ── Thinking status (below chat input) ── */
+    .thinking-status {
+        text-align: center;
+        color: #00d4aa;
+        font-size: 0.82rem;
+        font-weight: 500;
+        padding: 8px 0;
+        animation: pulse-glow 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-glow {
+        0%, 100% { opacity: 0.6; }
+        50% { opacity: 1; }
     }
 
     /* ── Hide Streamlit branding ── */
@@ -898,6 +912,9 @@ def render_center_panel():
         on_change=_on_input_submit,
     )
 
+    # Placeholder for thinking status (filled by main when processing)
+    return st.empty()
+
 
 # ============================================================
 # Right Panel
@@ -905,7 +922,6 @@ def render_center_panel():
 
 def render_right_panel():
     """Render right panel: 3D viewer, downloads, modification steps."""
-    st.markdown('<div class="viewer-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-header">3D Structure Viewer</div>', unsafe_allow_html=True)
 
     current_id = st.session_state.current_structure_id
@@ -970,8 +986,6 @@ def render_right_panel():
             'Ask to download a structure<br>or upload a PDB file to visualize</div></div>',
             unsafe_allow_html=True,
         )
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ============================================================
@@ -1102,7 +1116,7 @@ def main():
         render_left_panel()
 
     with center_col:
-        render_center_panel()
+        status_placeholder = render_center_panel()
 
     with right_col:
         render_right_panel()
@@ -1117,8 +1131,12 @@ def main():
         st.session_state._submitted_input = None
 
     if user_input:
-        with st.spinner("Thinking via MCP..."):
-            handle_user_input(user_input, api_key, claude_tools)
+        with status_placeholder.container():
+            st.markdown(
+                '<div class="thinking-status">🧬 Thinking via MCP...</div>',
+                unsafe_allow_html=True,
+            )
+        handle_user_input(user_input, api_key, claude_tools)
         st.rerun()
 
 
