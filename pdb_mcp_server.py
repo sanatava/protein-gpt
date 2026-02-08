@@ -11,15 +11,16 @@ Tools provided:
   3. download_structure    - Download coordinate files
   4. search_by_uniprot     - Find structures by UniProt ID
   5. get_structure_quality  - Get validation metrics
-  6. list_hetatm           - List ligands/ions/water in a structure
-  7. remove_hetatm         - Remove ligands/ions/water from a structure
-  8. remove_chain          - Remove chains from a structure
-  9. replace_metal         - Swap metal ions in a structure
-  10. mutate_residue       - Mutate amino acid residues
-  11. get_modified_structure - Get PDB text of modified structure
-  12. calculate_pka        - Predict pKa values using PROPKA
-  13. get_protonation_states - Get protonation states at a given pH
-  14. add_hydrogens         - Add hydrogens at correct protonation states (PDB2PQR)
+  6. upload_structure      - Upload PDB data for chaining modifications
+  7. list_hetatm           - List ligands/ions/water in a structure
+  8. remove_hetatm         - Remove ligands/ions/water from a structure
+  9. remove_chain          - Remove chains from a structure
+  10. replace_metal         - Swap metal ions in a structure
+  11. mutate_residue       - Mutate amino acid residues
+  12. get_modified_structure - Get PDB text of modified structure
+  13. calculate_pka        - Predict pKa values using PROPKA
+  14. get_protonation_states - Get protonation states at a given pH
+  15. add_hydrogens         - Add hydrogens at correct protonation states (PDB2PQR)
 """
 
 import json
@@ -343,6 +344,39 @@ def _ensure_downloaded(pdb_id: str) -> str:
         resp.raise_for_status()
         _structures[key] = resp.text
     return key
+
+
+# ============================================================
+# Tool: Upload Structure (for chaining modifications)
+# ============================================================
+
+@mcp.tool()
+def upload_structure(structure_id: str, file_path: str) -> str:
+    """
+    Load a PDB structure from a temp file into memory for modification tools.
+
+    The client writes PDB data to a temp file and passes the path here.
+    This avoids sending large PDB text through the MCP JSON pipe.
+
+    Args:
+        structure_id: Structure ID (e.g., "1HPX_NOSO4")
+        file_path: Path to the temp file containing PDB data
+    """
+    key = structure_id.upper()
+    try:
+        with open(file_path, "r") as f:
+            pdb_data = f.read()
+    except FileNotFoundError:
+        return json.dumps({"error": f"File not found: {file_path}"})
+    _structures[key] = pdb_data
+    lines = pdb_data.splitlines()
+    atoms = sum(1 for l in lines if l.startswith(("ATOM", "HETATM")))
+    return json.dumps({
+        "status": "success",
+        "structure_id": key,
+        "lines": len(lines),
+        "atom_records": atoms,
+    })
 
 
 # ============================================================

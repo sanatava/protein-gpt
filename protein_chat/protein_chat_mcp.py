@@ -18,6 +18,7 @@ import json
 import asyncio
 import time
 import uuid
+import tempfile
 import requests
 import streamlit as st
 import anthropic
@@ -45,20 +46,19 @@ CUSTOM_CSS = """
     .stApp {
         background: linear-gradient(160deg, #060b14 0%, #0b1528 35%, #0d1018 70%, #080d16 100%);
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        overflow: hidden !important;
-    }
-    .stApp > div[data-testid="stAppViewContainer"] {
-        overflow: hidden !important;
-    }
-    .stApp [data-testid="stMain"] {
-        overflow: hidden !important;
     }
     .main .block-container {
         padding-top: 0.8rem;
         padding-left: 0.8rem;
         padding-right: 0.8rem;
         max-width: 100%;
-        overflow: hidden !important;
+    }
+    /* Hide page scroll only on large screens */
+    @media (min-height: 820px) {
+        .stApp { overflow: hidden !important; }
+        .stApp > div[data-testid="stAppViewContainer"] { overflow: hidden !important; }
+        .stApp [data-testid="stMain"] { overflow: hidden !important; }
+        .main .block-container { overflow: hidden !important; }
     }
     section[data-testid="stSidebar"] { display: none; }
 
@@ -146,7 +146,7 @@ CUSTOM_CSS = """
         border: 1px solid rgba(0, 212, 170, 0.08);
         border-radius: 16px;
         padding: 0.8rem;
-        min-height: 580px;
+        min-height: min(580px, 70vh);
     }
 
     /* General button styling */
@@ -169,6 +169,20 @@ CUSTOM_CSS = """
         background: rgba(0, 212, 170, 0.08) !important;
         border-color: rgba(0, 212, 170, 0.25) !important;
         color: #fff !important;
+    }
+
+    /* Delete button (trash icon) */
+    [data-testid="stColumns"] button[kind="secondary"]:has(> div > p:only-child) {
+        padding: 4px 6px !important;
+        min-height: 0 !important;
+        font-size: 0.75rem !important;
+        opacity: 0.4;
+        background: transparent !important;
+        border: none !important;
+    }
+    [data-testid="stColumns"] button[kind="secondary"]:has(> div > p:only-child):hover {
+        opacity: 1;
+        background: rgba(255, 80, 80, 0.12) !important;
     }
 
     /* Section headers */
@@ -259,7 +273,7 @@ CUSTOM_CSS = """
 
     /* Empty viewer placeholder */
     .viewer-empty {
-        height: 400px;
+        height: min(400px, 50vh);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -316,7 +330,7 @@ CUSTOM_CSS = """
     .welcome-wrapper {
         display: flex;
         flex-direction: column;
-        min-height: 510px;
+        min-height: min(510px, 62vh);
     }
     .welcome-wrapper .welcome-content {
         flex: 1;
@@ -393,18 +407,36 @@ CUSTOM_CSS = """
         color: #00d4aa;
     }
 
-    /* ── Thinking status (below chat input) ── */
-    .thinking-status {
-        text-align: center;
-        color: #00d4aa;
-        font-size: 0.82rem;
-        font-weight: 500;
-        padding: 8px 0;
-        animation: pulse-glow 1.5s ease-in-out infinite;
+    /* ── Typing indicator (three dots) ── */
+    .typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 8px 14px;
     }
-    @keyframes pulse-glow {
-        0%, 100% { opacity: 0.6; }
-        50% { opacity: 1; }
+    .typing-indicator span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #00d4aa;
+        animation: typing-bounce 1.4s ease-in-out infinite;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing-bounce {
+        0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
+        30% { opacity: 1; transform: translateY(-4px); }
+    }
+
+    /* ── Responsive adjustments ── */
+    @media (max-height: 819px) {
+        .app-header { padding: 0.4rem 0 0.4rem 0; margin-bottom: 0.4rem; }
+        .app-header h1 { font-size: 1.5rem; }
+        .app-header p { font-size: 0.65rem; }
+        /* Shrink chat container on smaller screens */
+        [data-testid="stVerticalBlockBorderWrapper"][data-testid-has-border] {
+            max-height: 55vh !important;
+        }
     }
 
     /* ── Hide Streamlit branding ── */
@@ -458,6 +490,25 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
+
+            # For tools that reference a structure by pdb_id, upload cached
+            # data first so the server has modified structures available.
+            NEEDS_STRUCTURE = {"list_hetatm", "get_structure_info", "get_modified_structure",
+                               "calculate_pka", "get_protonation_states"}
+            if tool_name in NEEDS_STRUCTURE:
+                source_id = arguments.get("pdb_id", arguments.get("structure_id", "")).upper()
+                if source_id and source_id in st.session_state.pdb_cache:
+                    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".pdb", delete=False)
+                    tmp.write(st.session_state.pdb_cache[source_id])
+                    tmp.close()
+                    try:
+                        await session.call_tool("upload_structure", {
+                            "structure_id": source_id,
+                            "file_path": tmp.name,
+                        })
+                    finally:
+                        os.unlink(tmp.name)
+
             result = await session.call_tool(tool_name, arguments)
             texts = []
             for content in result.content:
@@ -470,7 +521,9 @@ async def call_mcp_tool_and_fetch(tool_name: str, arguments: dict) -> tuple:
     """Call a modification tool AND get_modified_structure in the SAME session.
     Returns (tool_result_text, modified_pdb_text_or_None).
     This is needed because each MCP session is a separate subprocess,
-    and modified structures are lost when the subprocess exits."""
+    and modified structures are lost when the subprocess exits.
+    Before calling the modification tool, uploads any cached PDB data
+    so the server has the previously modified structure available."""
     server_params = StdioServerParameters(
         command=MCP_PYTHON,
         args=[MCP_SERVER_SCRIPT],
@@ -478,6 +531,22 @@ async def call_mcp_tool_and_fetch(tool_name: str, arguments: dict) -> tuple:
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
+
+            # Upload the source structure (the pdb_id being modified) so the
+            # server has it in memory even though this is a fresh subprocess.
+            # Uses a temp file to avoid sending large PDB text through MCP JSON.
+            source_id = arguments.get("pdb_id", "").upper()
+            tmp_path = None
+            if source_id and source_id in st.session_state.pdb_cache:
+                tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".pdb", delete=False)
+                tmp.write(st.session_state.pdb_cache[source_id])
+                tmp.close()
+                tmp_path = tmp.name
+                await session.call_tool("upload_structure", {
+                    "structure_id": source_id,
+                    "file_path": tmp_path,
+                })
+
             # Call the modification tool
             result = await session.call_tool(tool_name, arguments)
             texts = []
@@ -504,6 +573,9 @@ async def call_mcp_tool_and_fetch(tool_name: str, arguments: dict) -> tuple:
                         pdb_text = fetched
             except (json.JSONDecodeError, TypeError):
                 pass
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
             return tool_result, pdb_text
 
@@ -529,8 +601,13 @@ def discover_tools():
     mcp_tools = run_async(get_mcp_tools())
     st.session_state.mcp_tools = mcp_tools
 
+    # Internal tools that Claude should not call directly
+    INTERNAL_TOOLS = {"upload_structure"}
+
     claude_tools = []
     for tool in mcp_tools:
+        if tool.name in INTERNAL_TOOLS:
+            continue
         claude_tool = {
             "name": tool.name,
             "description": tool.description or "",
@@ -842,11 +919,15 @@ def render_left_panel():
     if st.session_state.saved_conversations:
         st.markdown('<div class="section-header">History</div>', unsafe_allow_html=True)
         for i, conv in enumerate(st.session_state.saved_conversations):
-            if st.button(conv["title"], key=f"conv_{conv['id']}", use_container_width=True):
-                _save_current_conversation()
-                st.session_state.saved_conversations.pop(i)
-                _load_conversation(conv)
-                st.rerun()
+            col_title, col_del = st.columns([5, 1])
+            with col_title:
+                if st.button(conv["title"], key=f"conv_{conv['id']}", use_container_width=True):
+                    _load_conversation(conv)
+                    st.rerun()
+            with col_del:
+                if st.button("🗑", key=f"del_{conv['id']}", use_container_width=True):
+                    st.session_state.saved_conversations.pop(i)
+                    st.rerun()
     else:
         st.caption("No conversations yet.")
 
@@ -902,6 +983,13 @@ def render_center_panel():
                                     f'<div class="structure-notice">Structure <b>{sid}</b> updated — see right panel</div>',
                                     unsafe_allow_html=True,
                                 )
+            # Show typing indicator while waiting for response
+            if st.session_state.get("_waiting_for_response"):
+                with st.chat_message("assistant"):
+                    st.markdown(
+                        '<div class="typing-indicator"><span></span><span></span><span></span></div>',
+                        unsafe_allow_html=True,
+                    )
 
     # Input always below the container, inside the center column
     st.text_input(
@@ -912,8 +1000,6 @@ def render_center_panel():
         on_change=_on_input_submit,
     )
 
-    # Placeholder for thinking status (filled by main when processing)
-    return st.empty()
 
 
 # ============================================================
@@ -954,31 +1040,38 @@ def render_right_panel():
             type="primary",
         )
 
-        # Modification history
-        if len(st.session_state.modification_history) > 1:
+        # Modification history dropdown (exclude demo entries)
+        real_steps = [
+            s for s in st.session_state.modification_history
+            if not s["label"].startswith("Demo:")
+        ]
+        if len(real_steps) > 1:
             st.markdown('<div class="gradient-divider"></div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-header">Modification Steps</div>', unsafe_allow_html=True)
-            for i, step in enumerate(st.session_state.modification_history):
-                sid = step["id"]
-                label = step["label"]
-                is_current = (sid == current_id)
+            st.markdown('<div class="section-header">Versions</div>', unsafe_allow_html=True)
 
-                subcol1, subcol2 = st.columns([3, 1])
-                with subcol1:
-                    cls = "mod-step current" if is_current else "mod-step"
-                    st.markdown(
-                        f'<div class="{cls}"><span class="dot"></span>Step {i + 1}: {label}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with subcol2:
-                    if sid in st.session_state.pdb_cache:
-                        st.download_button(
-                            "DL",
-                            data=st.session_state.pdb_cache[sid],
-                            file_name=f"{sid}.pdb",
-                            mime="chemical/x-pdb",
-                            key=f"dl_step_{sid}_{i}",
-                        )
+            options = [
+                f"Step {i+1}: {step['label']}"
+                for i, step in enumerate(real_steps)
+            ]
+            current_idx = 0
+            for i, step in enumerate(real_steps):
+                if step["id"] == current_id:
+                    current_idx = i
+                    break
+
+            selected = st.selectbox(
+                "Version",
+                options,
+                index=current_idx,
+                key="version_select",
+                label_visibility="collapsed",
+            )
+
+            sel_idx = options.index(selected)
+            sel_id = real_steps[sel_idx]["id"]
+            if sel_id != current_id and sel_id in st.session_state.pdb_cache:
+                st.session_state.current_structure_id = sel_id
+                st.rerun()
     else:
         st.markdown(
             '<div class="viewer-empty">'
@@ -992,10 +1085,9 @@ def render_right_panel():
 # Input Handling
 # ============================================================
 
-def handle_user_input(user_input, api_key, claude_tools):
-    """Process user input: run agent and update state."""
-    st.session_state.chat_history.append({"role": "user", "content": user_input})
-
+def _process_response(user_input, api_key, claude_tools):
+    """Call the AI agent and append the assistant response to chat history.
+    The user message should already be in chat_history before calling this."""
     try:
         response_text, tool_calls = run_agent(user_input, api_key, claude_tools)
 
@@ -1079,6 +1171,7 @@ def main():
         "current_structure_id": None,
         "saved_conversations": [],
         "_submitted_input": None,
+        "_waiting_for_response": None,
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -1116,27 +1209,31 @@ def main():
         render_left_panel()
 
     with center_col:
-        status_placeholder = render_center_panel()
+        render_center_panel()
 
     with right_col:
         render_right_panel()
 
-    # Determine user input
-    user_input = None
+    # Phase 1: New input received → add user message, show it, then trigger Phase 2
+    new_input = None
     if st.session_state.pending_example:
-        user_input = st.session_state.pending_example
+        new_input = st.session_state.pending_example
         st.session_state.pending_example = None
     elif st.session_state.get("_submitted_input"):
-        user_input = st.session_state._submitted_input
+        new_input = st.session_state._submitted_input
         st.session_state._submitted_input = None
 
-    if user_input:
-        with status_placeholder.container():
-            st.markdown(
-                '<div class="thinking-status">🧬 Thinking via MCP...</div>',
-                unsafe_allow_html=True,
-            )
-        handle_user_input(user_input, api_key, claude_tools)
+    if new_input:
+        # Add user message immediately so it shows on next rerun
+        st.session_state.chat_history.append({"role": "user", "content": new_input})
+        st.session_state._waiting_for_response = new_input
+        st.rerun()
+
+    # Phase 2: User message is visible, now fetch the AI response
+    if st.session_state.get("_waiting_for_response"):
+        pending_msg = st.session_state._waiting_for_response
+        st.session_state._waiting_for_response = None
+        _process_response(pending_msg, api_key, claude_tools)
         st.rerun()
 
 
