@@ -439,6 +439,71 @@ CUSTOM_CSS = """
         }
     }
 
+    /* ── Developer contact ── */
+    .dev-contact {
+        padding-top: 0.3rem;
+        text-align: center;
+    }
+    .dev-contact .dev-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .dev-contact .dev-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0077b5, #00a0dc);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: box-shadow 0.2s ease;
+        overflow: hidden;
+        text-decoration: none;
+        color: #fff;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .dev-contact .dev-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .dev-contact .dev-avatar:hover {
+        box-shadow: 0 0 12px rgba(0, 119, 181, 0.4);
+    }
+    .dev-contact .dev-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+    .dev-contact .dev-name {
+        font-size: 0.75rem;
+        color: rgba(220, 230, 240, 0.85);
+        font-weight: 500;
+    }
+    .dev-contact .dev-links {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .dev-contact .dev-email,
+    .dev-contact .dev-linkedin {
+        font-size: 0.65rem;
+        color: rgba(160, 174, 192, 0.5);
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+    .dev-contact .dev-email:hover,
+    .dev-contact .dev-linkedin:hover {
+        color: #00d4aa;
+    }
+    .dev-contact .dev-sep {
+        font-size: 0.6rem;
+        color: rgba(160, 174, 192, 0.3);
+    }
+
     /* ── Hide Streamlit branding ── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -944,6 +1009,7 @@ def render_left_panel():
         st.caption("No conversations yet.")
 
 
+
 # ============================================================
 # Center Panel
 # ============================================================
@@ -1011,6 +1077,44 @@ def render_center_panel():
         label_visibility="collapsed",
         on_change=_on_input_submit,
     )
+
+    # Developer contact below chat input
+    # Load avatar image as base64 if available
+    avatar_html = ""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    avatar_path = None
+    for name in ("avatar", "Avatar"):
+        for ext in ("jpg", "jpeg", "png", "webp", "JPG", "PNG"):
+            candidate = os.path.join(app_dir, f"{name}.{ext}")
+            if os.path.exists(candidate):
+                avatar_path = candidate
+                break
+        if avatar_path:
+            break
+    if avatar_path:
+        import base64
+        with open(avatar_path, "rb") as img_f:
+            b64 = base64.b64encode(img_f.read()).decode()
+        mime = "image/png" if avatar_path.endswith(".png") else "image/jpeg"
+        avatar_html = f'<div class="dev-avatar"><img src="data:{mime};base64,{b64}" alt="ST" /></div>'
+    else:
+        avatar_html = '<div class="dev-avatar"><span>ST</span></div>'
+
+    st.markdown(f"""
+        <div class="dev-contact">
+            <div class="dev-row">
+                {avatar_html}
+                <div class="dev-info">
+                    <span class="dev-name">Developed by Sana Tavasoli</span>
+                    <span class="dev-links">
+                        <a href="mailto:stavasol96@gmail.com" class="dev-email">stavasol96@gmail.com</a>
+                        <span class="dev-sep">·</span>
+                        <a href="https://www.linkedin.com/in/sana-tavasoli-4a17b0373/" target="_blank" class="dev-linkedin">LinkedIn</a>
+                    </span>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 
 
