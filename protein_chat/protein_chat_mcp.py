@@ -869,8 +869,13 @@ def _get_conversation_title(chat_history):
 
 
 def _save_current_conversation():
-    """Save current chat to saved_conversations if it has messages."""
+    """Save current chat to saved_conversations if it has messages.
+    Skips saving if the current chat was loaded from history or demo."""
     if not st.session_state.chat_history:
+        return
+    if st.session_state.get("_loaded_conv_id"):
+        # Current chat was loaded from history/demo — don't duplicate it
+        st.session_state._loaded_conv_id = None
         return
     title = _get_conversation_title(st.session_state.chat_history)
     conv = {
@@ -891,6 +896,7 @@ def _load_conversation(conv):
     st.session_state.modification_history = list(conv["modification_history"])
     st.session_state.current_structure_id = conv["current_structure_id"]
     st.session_state.pending_viewers = []
+    st.session_state._loaded_conv_id = conv["id"]
 
 
 def _start_new_chat():
@@ -912,6 +918,12 @@ def render_left_panel():
         _start_new_chat()
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # Fixed demo example
+    st.markdown('<div class="section-header">Demo</div>', unsafe_allow_html=True)
+    if st.button("🧬 Visualize 6M8F", key="demo_conv_btn", use_container_width=True):
+        _load_demo_conversation()
+        st.rerun()
 
     st.markdown('<div class="gradient-divider"></div>', unsafe_allow_html=True)
 
@@ -1123,34 +1135,50 @@ def _process_response(user_input, api_key, claude_tools):
 
 
 # ============================================================
-# Demo Structure Loader
+# Demo Conversation Loader
 # ============================================================
 
-DEMO_PDB_ID = "1YOG"  # Green fluorescent protein
+DEMO_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_conversation.json")
+
 
 @st.cache_data(show_spinner=False)
-def _fetch_demo_pdb(pdb_id):
-    """Fetch a PDB file from RCSB for the demo viewer."""
-    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-    resp = requests.get(url, timeout=10)
-    if resp.status_code == 200:
-        return resp.text
+def _load_demo_json():
+    """Load the pre-generated demo conversation JSON (cached)."""
+    if os.path.exists(DEMO_JSON):
+        with open(DEMO_JSON, "r") as f:
+            return json.load(f)
     return None
 
 
-def _load_demo_structure():
-    """Load demo structure into session state on first visit."""
+def _load_demo_conversation():
+    """Load the demo conversation into the active session."""
+    demo = _load_demo_json()
+    if not demo:
+        return
+    st.session_state.chat_history = list(demo["chat_history"])
+    st.session_state.pdb_cache = dict(demo["pdb_cache"])
+    st.session_state.modification_history = list(demo["modification_history"])
+    st.session_state.current_structure_id = demo["current_structure_id"]
+    st.session_state.pending_viewers = []
+    st.session_state._loaded_conv_id = "demo"
+
+
+def _load_demo_structure_on_start():
+    """On first visit (no chat yet), show demo structure in viewer."""
     if st.session_state.current_structure_id is not None:
         return
     if st.session_state.get("_demo_loaded"):
         return
-    pdb_text = _fetch_demo_pdb(DEMO_PDB_ID)
-    if pdb_text:
-        st.session_state.pdb_cache[DEMO_PDB_ID] = pdb_text
-        st.session_state.current_structure_id = DEMO_PDB_ID
-        st.session_state.modification_history = [
-            {"id": DEMO_PDB_ID, "label": f"Demo: {DEMO_PDB_ID} (GFP)"}
-        ]
+    demo = _load_demo_json()
+    if demo:
+        # Just load the original 6M8F for the viewer, not the full conversation
+        first_id = demo["modification_history"][0]["id"]
+        if first_id in demo["pdb_cache"]:
+            st.session_state.pdb_cache[first_id] = demo["pdb_cache"][first_id]
+            st.session_state.current_structure_id = first_id
+            st.session_state.modification_history = [
+                {"id": first_id, "label": f"Demo: {first_id}"}
+            ]
     st.session_state._demo_loaded = True
 
 
@@ -1178,7 +1206,7 @@ def main():
             st.session_state[key] = default
 
     # Load demo structure on first visit
-    _load_demo_structure()
+    _load_demo_structure_on_start()
 
     # Get API key (hidden from user)
     api_key = get_api_key()
