@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ProteinChat AI (MCP Edition) — 3-Panel Layout
+Protein GPT (MCP Edition) — 3-Panel Layout
 Streamlit chat app that connects to the PDB MCP Server via Model Context Protocol.
 
 Architecture:
@@ -32,7 +32,7 @@ from mcp.client.stdio import stdio_client, StdioServerParameters
 # ============================================================
 
 st.set_page_config(
-    page_title="ProteinChat AI (MCP)",
+    page_title="Protein GPT (MCP)",
     page_icon="🧬",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -442,7 +442,7 @@ CUSTOM_CSS = """
     /* ── Developer contact ── */
     .dev-contact {
         padding-top: 0.3rem;
-        text-align: center;
+        text-align: left;
     }
     .dev-contact .dev-row {
         display: inline-flex;
@@ -847,7 +847,7 @@ def execute_tool(tool_name, tool_input):
 # Agent Loop
 # ============================================================
 
-SYSTEM_PROMPT = """You are ProteinChat AI, a structural biology assistant powered by MCP (Model Context Protocol).
+SYSTEM_PROMPT = """You are Protein GPT, a structural biology assistant powered by MCP (Model Context Protocol).
 You connect to a PDB MCP Server that gives you tools for protein structure analysis and modification.
 
 Keep answers SHORT (2-4 sentences). Let the 3D viewer and data speak.
@@ -1008,6 +1008,43 @@ def render_left_panel():
     else:
         st.caption("No conversations yet.")
 
+    # Developer contact at bottom of left panel
+    st.markdown('<div class="gradient-divider"></div>', unsafe_allow_html=True)
+    avatar_html = ""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    avatar_path = None
+    for name in ("avatar", "Avatar"):
+        for ext in ("jpg", "jpeg", "png", "webp", "JPG", "PNG"):
+            candidate = os.path.join(app_dir, f"{name}.{ext}")
+            if os.path.exists(candidate):
+                avatar_path = candidate
+                break
+        if avatar_path:
+            break
+    if avatar_path:
+        import base64
+        with open(avatar_path, "rb") as img_f:
+            b64 = base64.b64encode(img_f.read()).decode()
+        mime = "image/png" if avatar_path.endswith(".png") else "image/jpeg"
+        avatar_html = f'<div class="dev-avatar"><img src="data:{mime};base64,{b64}" alt="ST" /></div>'
+    else:
+        avatar_html = '<div class="dev-avatar"><span>ST</span></div>'
+
+    st.markdown(f"""
+        <div class="dev-contact">
+            <div class="dev-row">
+                {avatar_html}
+                <div class="dev-info">
+                    <span class="dev-name">Developed by Sana Tavasoli</span>
+                    <span class="dev-links">
+                        <a href="mailto:stavasol96@gmail.com" class="dev-email">stavasol96@gmail.com</a>
+                        <span class="dev-sep">·</span>
+                        <a href="https://www.linkedin.com/in/sana-tavasoli-4a17b0373/" target="_blank" class="dev-linkedin">LinkedIn</a>
+                    </span>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 
 # ============================================================
@@ -1034,7 +1071,7 @@ def render_center_panel():
                 <div class="welcome-wrapper">
                     <div class="welcome-content">
                         <div class="welcome-icon">🧬</div>
-                        <div class="welcome-title">Welcome to ProteinChat AI</div>
+                        <div class="welcome-title">Welcome to Protein GPT</div>
                         <div class="welcome-sub">Ask me anything about protein structures</div>
                         <div class="welcome-examples">
                             <div class="welcome-example">Download &amp; visualize a structure</div>
@@ -1078,43 +1115,6 @@ def render_center_panel():
         on_change=_on_input_submit,
     )
 
-    # Developer contact below chat input
-    # Load avatar image as base64 if available
-    avatar_html = ""
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    avatar_path = None
-    for name in ("avatar", "Avatar"):
-        for ext in ("jpg", "jpeg", "png", "webp", "JPG", "PNG"):
-            candidate = os.path.join(app_dir, f"{name}.{ext}")
-            if os.path.exists(candidate):
-                avatar_path = candidate
-                break
-        if avatar_path:
-            break
-    if avatar_path:
-        import base64
-        with open(avatar_path, "rb") as img_f:
-            b64 = base64.b64encode(img_f.read()).decode()
-        mime = "image/png" if avatar_path.endswith(".png") else "image/jpeg"
-        avatar_html = f'<div class="dev-avatar"><img src="data:{mime};base64,{b64}" alt="ST" /></div>'
-    else:
-        avatar_html = '<div class="dev-avatar"><span>ST</span></div>'
-
-    st.markdown(f"""
-        <div class="dev-contact">
-            <div class="dev-row">
-                {avatar_html}
-                <div class="dev-info">
-                    <span class="dev-name">Developed by Sana Tavasoli</span>
-                    <span class="dev-links">
-                        <a href="mailto:stavasol96@gmail.com" class="dev-email">stavasol96@gmail.com</a>
-                        <span class="dev-sep">·</span>
-                        <a href="https://www.linkedin.com/in/sana-tavasoli-4a17b0373/" target="_blank" class="dev-linkedin">LinkedIn</a>
-                    </span>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
 
 
 
@@ -1329,7 +1329,7 @@ def main():
     # App header
     st.markdown("""
         <div class="app-header">
-            <h1>ProteinChat AI</h1>
+            <h1>Protein GPT</h1>
             <p>MCP Protocol &bull; PDB Search &bull; 3D Viewer &bull; Structure Editing &bull; PROPKA</p>
         </div>
     """, unsafe_allow_html=True)
