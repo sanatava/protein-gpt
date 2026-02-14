@@ -504,6 +504,33 @@ CUSTOM_CSS = """
         color: rgba(160, 174, 192, 0.3);
     }
 
+    /* ── Force light text on all Streamlit elements (deployed dark theme fix) ── */
+    .stApp, .stApp p, .stApp span, .stApp label, .stApp li, .stApp td, .stApp th,
+    .stApp div, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {
+        color: #fafafa;
+    }
+    .stApp a { color: #00d4aa; }
+    .stMarkdown, .stMarkdown p, .stMarkdown span, .stMarkdown li,
+    .stMarkdown td, .stMarkdown th {
+        color: #fafafa !important;
+    }
+    [data-testid="stChatMessage"] p,
+    [data-testid="stChatMessage"] span,
+    [data-testid="stChatMessage"] li,
+    [data-testid="stChatMessage"] code,
+    [data-testid="stChatMessage"] td,
+    [data-testid="stChatMessage"] th {
+        color: #fafafa !important;
+    }
+    .stSelectbox label, .stTextInput label, .stRadio label,
+    .stCheckbox label, .stSlider label {
+        color: #fafafa !important;
+    }
+    /* Force selectbox dropdown text */
+    .stSelectbox [data-baseweb="select"] span {
+        color: #fafafa !important;
+    }
+
     /* ── Hide Streamlit branding ── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -1037,7 +1064,7 @@ def render_left_panel():
                 <div class="dev-info">
                     <span class="dev-name">Developed by Sana Tavasoli</span>
                     <span class="dev-links">
-                        <a href="mailto:stavasol96@gmail.com" class="dev-email">stavasol96@gmail.com</a>
+                        <a href="mailto:sanatavasoli96@gmail.com" class="dev-email">sanatavasoli96@gmail.com</a>
                         <span class="dev-sep">·</span>
                         <a href="https://www.linkedin.com/in/sana-tavasoli-4a17b0373/" target="_blank" class="dev-linkedin">LinkedIn</a>
                     </span>
